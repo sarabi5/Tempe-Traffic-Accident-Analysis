@@ -13,3 +13,6 @@ Part III: Assessed accident frequency and severity by hour.
 
 
 This project was completed as part of CPP 526: Found Data Sci I: Data Prog R (2023 Summer) at Arizona State University. 
+
+Please download the HTML file to view the full code and analysis results.
+
