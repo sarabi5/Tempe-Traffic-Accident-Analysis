@@ -1,0 +1,416 @@
+---
+output:
+  html_document:
+    df_print: paged
+    theme: cerulean
+    highlight: haddock
+    toc: yes
+    toc_float: yes
+---
+
+```{r include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      fig.width = 10)     # Knitting options
+
+library(dplyr)
+library(pander)                           # Load required packages
+
+```
+
+<br>
+
+# Source Data
+
+The analysis uses data comprised of traffic accidents in the city of 
+Tempe, Arizona
+[**Tempe Open Data Portal**](https://data.tempe.gov/datasets/tempegov::1-08-crash-data-report-detail/about). 
+
+```{r include = FALSE}
+
+# READ IN DATA
+
+url <- paste0("https://github.com/DS4PS/Data-Science-Class/blob",
+              "/master/DATA/TempeTrafficAccidents.rds?raw=true")
+
+dat <- readRDS(gzcon(url(url)))     # Method per instructions
+
+```
+
+<br>
+
+## Preview
+
+```{r}
+
+head(dat)
+
+```
+<br>
+
+# Preprocessing
+
+```{r eval = FALSE, echo = TRUE, include = TRUE}
+
+date.vec <- strptime(dat$DateTime, 
+                     format = "%m/%d/%y %H:%M")       # Create date fields
+
+dat$hour   <- format(date.vec, format = "%H")
+dat$month  <- format(date.vec, format = "%b")
+dat$day    <- format(date.vec, format = "%a")
+dat$day365 <- format(date.vec, format = "%j")
+dat$week   <- format(date.vec, format = "%V")
+
+dat$day <- factor(dat$day, 
+                  levels = c("Mon",
+                             "Tue",
+                             "Wed",
+                             "Thu",
+                             "Fri",
+                             "Sat",
+                             "Sun"))                  # Order weekdays
+
+dat$hour12 <- format(date.vec, 
+                     format="%l %p")                  # Create 12-hour format
+
+time.levels <- c("12 AM", paste(1:11, "AM"), 
+                 "12 PM", paste(1:11, "PM"))
+
+dat$hour12 <- factor(dat$hour12, 
+                     levels = time.levels)            # Order time intervals
+
+age.labels <- paste0("Age ", 
+                     c(16,18,25,35,45,55,65,75), "-", 
+                     c(18,25,35,45,55,65,75,100) )
+
+dat$age <- cut(dat$Age_Drv1, 
+               breaks = c(16,18,25,
+                          35,45,55,
+                          65,75,100), 
+               labels = age.labels)                   # Discretize age ranges
+
+```
+
+<br>
+
+```{r include = FALSE}
+
+date.vec <- strptime(dat$DateTime, 
+                     format = "%m/%d/%y %H:%M")       # Create date fields
+
+dat$hour   <- format(date.vec, format = "%H")
+dat$month  <- format(date.vec, format = "%b")
+dat$day    <- format(date.vec, format = "%a")
+dat$day365 <- format(date.vec, format = "%j")
+dat$week   <- format(date.vec, format = "%V")
+
+dat$day <- factor(dat$day, 
+                  levels = c("Mon",
+                             "Tue",
+                             "Wed",
+                             "Thu",
+                             "Fri",
+                             "Sat",
+                             "Sun"))                  # Order weekdays
+
+dat$hour12 <- format(date.vec, 
+                     format="%l %p")                  # Create 12-hour format
+
+time.levels <- c("12 AM", paste(1:11, "AM"), 
+                 "12 PM", paste(1:11, "PM"))
+
+dat$hour12 <- factor(dat$hour12, 
+                     labels = time.levels)            # Order time intervals
+
+age.labels <- paste0("Age ", 
+                     c(16,18,25,35,45,55,65,75), "-", 
+                     c(18,25,35,45,55,65,75,100) )
+
+dat$age <- cut(dat$Age_Drv1, 
+               breaks = c(16,18,25,
+                          35,45,55,
+                          65,75,100), 
+               labels = age.labels)                   # Discretize age ranges
+
+```
+
+<br>
+
+# Part I: Summaries
+
+## 1. Mondays Accidents
+<br>
+
+```{r}
+
+sum(dat$day == "Mon", 
+    na.rm = TRUE)
+
+```
+
+<br>
+
+## 2. Monday Accidents (%)
+
+Calculate the proportion of accidents occur on Monday each week.
+
+<br>
+
+```{r}
+
+proportion_monday <- dat %>%
+  filter(day == "Mon") %>%
+  summarise(proportion = n() / nrow(dat))
+
+```
+
+<br>
+
+**Answer:** **0.1438005%**
+
+<br>
+
+## 3. Harmful Monday Accidents (%)
+The proportion of accidents on mondays result in harm
+
+<br>
+
+```{r}
+proportion_monday_harm <- dat %>%
+  filter(day == "Mon" & (Totalinjuries > 0 | Totalfatalities > 0)) %>%
+  summarise(proportion = n() / nrow(dat))
+
+```
+
+<br>
+
+**Answer:** **0.04292237%**
+
+<br>
+
+## 4. Most Common Accidents
+The most common accident type that occurs on monday.
+
+<br>
+
+```{r}
+
+dat %>%
+  filter(day == "Mon") %>%
+  count(Collisionmanner) %>%
+  arrange(desc(n))
+
+```
+
+<br>
+
+**Answer:** **Rear End**
+
+<br>
+
+## 5. Differences in Accidents
+The difference in the proportion of accidents resulting in harm across the days of the week.
+
+<br>
+
+```{r}
+
+proportion_harm_by_day <- dat %>%
+  group_by(day) %>%
+  summarise(proportion_harm = sum(Totalinjuries > 0 | Totalfatalities > 0) / n())
+
+proportion_harm_by_day
+
+```
+
+<br>
+
+**Answer:** More accidents occur **Thursday**.
+
+<br>
+
+## 6. Accident Stats by Weekday
+<br>
+
+```{r}
+
+dat %>%
+  group_by(day) %>%
+  mutate(harm_acc = Totalinjuries > 0 | Totalfatalities > 0) %>%
+  summarize(n = n(),
+            injuries = sum(Totalinjuries),
+            fatalities = sum(Totalfatalities),
+            harm.rate = mean(harm_acc))
+
+```
+
+<br>
+<br>
+
+# Part II: Age Groups
+
+
+## 1. Accidents by Hour & Age
+The age group that had the largest number of accident at 7Am.
+
+<br>
+
+```{r}
+
+accident_counts <- dat %>%
+  count(hour12, age)
+
+accident_counts
+
+accidents_7am <- accident_counts %>%
+  filter(hour12 == "7 AM")
+
+largest_age_group_7am <- accidents_7am %>%
+  filter(n == max(n)) %>%
+  pull(age)
+```
+
+<br>
+
+**Answer:** **18-25**
+
+<br>
+
+## 2. Accidents by Hour & Age (%)
+
+```{r echo = FALSE}
+data.frame(age = c("Age 16-18", "Age 18-25", "Age 25-35"),
+           hour12 = c("7 AM", "7 AM", "7 AM"),
+           n = c(77, 408, 371),
+           n.age = c(1458, 8796, 5456),
+           n.hour = c(1606, 1606, 1606),
+           p = c(0.05, 0.25, 0.23),
+           p.age = c(0.05, 0.05, 0.07),
+           p.hour = c(0.05, 0.25, 0.23)) %>%
+  pander()
+
+
+accidents_7am <- accident_counts %>%
+  filter(hour12 == "7 AM")
+
+proportions <- accidents_7am %>%
+  mutate(n.age = sum(n)) %>%
+  group_by(age) %>%
+  mutate(p = n / sum(n),
+         p.age = sum(n) / sum(n.age),
+         p.hour = n / sum(n)) %>%
+  ungroup() %>%
+  select(age, hour12, n, n.age, p, p.age, p.hour)
+
+proportions
+
+```
+
+<br>
+
+```{r}
+
+dat %>% 
+  group_by(hour12, age) %>% 
+  summarize(n = n()) %>%      # Partial solution
+  group_by(age) %>%           # Requires two new variables in 'mutate()'
+  mutate()                    # Lastly, requires function 'filter()
+
+```
+
+<br>
+<br>
+
+# Part III: Rates of Harm
+
+## 1. Accidents by Hour
+
+<br>
+
+```{r}
+
+dat %>%
+  group_by(hour) %>%
+  summarize(n = n()) %>%
+  plot(type = "b",
+       bty = "n",
+       pch = 19,
+       cex = 2,
+       xlab = "Hour",
+       ylab = "Total Number of Accidents",
+       main = "Total Number of Accidents by Time of Day")
+
+```
+
+<br>
+
+## 2. Total Casualties by Hour
+
+<br>
+
+```{r}
+
+injuries_fatalities_sum <- dat %>%
+  group_by(hour) %>%
+  summarise(TotalInjuries = sum(Totalinjuries))
+
+plot(injuries_fatalities_sum$hour, injuries_fatalities_sum$TotalInjuries,
+     type = "b",
+     bty = "n",
+     pch = 19,
+     cex = 2,
+     xlab = "Hour",
+     ylab = "Total Number of passengers hurt or killed",
+     main = "Total Injuries by hour of Day")
+
+```
+
+<br>
+
+## 3. Accidents with Casualties (%)
+
+<br>
+
+```{r}
+
+proportion_harmful <- dat %>%
+  group_by(hour) %>%
+  summarize(ProportionHarmful = sum(Totalinjuries > 0 | Totalfatalities > 0) / n())
+
+# Create a line plot
+plot(proportion_harmful$hour, proportion_harmful$ProportionHarmful, 
+     type = "b",
+     bty = "n",
+     pch = 19,
+     cex = 2,
+     xlab = "Hour",
+     ylab = "Proportion of Harmful Accidents",
+     main = "Proportion of Accidents result in injuries or fatalities")
+
+```
+
+<br>
+
+## 4. Avg. Harm by Harmful Accident
+
+<br>
+
+```{r}
+
+average_injuries_fatalities <- dat %>%
+  filter(Totalinjuries > 0 | Totalfatalities > 0) %>%
+  group_by(hour) %>%
+  summarize(AvgInjuriesFatalities = mean(Totalinjuries + Totalfatalities))
+
+plot(average_injuries_fatalities$hour, average_injuries_fatalities$AvgInjuriesFatalities,
+     type = "b",
+     bty = "n",
+     pch = 19,
+     cex = 2,
+     xlab = "Hour",
+     ylab = "Average number of passengers hurts",
+     main = "Average Injuries or Fatalities per Harmful Accidents")
+
+```
